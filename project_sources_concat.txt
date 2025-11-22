@@ -1,0 +1,656 @@
+================================================================================
+FILE: pom.xml
+================================================================================
+
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.7</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.shanaurin.jobparser</groupId>
+    <artifactId>vacancy-parser</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>Vacancy parser</name>
+    <description>Vacancy parser</description>
+
+    <properties>
+        <java.version>17</java.version>
+        <!-- Версия Spring Cloud, совместимая со Spring Boot 3.5.x (обнови при необходимости) -->
+        <spring-cloud.version>2025.0.0</spring-cloud.version>
+    </properties>
+
+    <!-- BOM для Spring Cloud (нужен для OpenFeign) -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+
+        <!-- Spring Web MVC -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- WebFlux (для webflux-клиента) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
+
+        <!-- JPA + H2 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- OpenFeign (для межсервисного взаимодействия) -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+
+        <!-- Jsoup для парсинга HTML -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.17.2</version>
+        </dependency>
+
+        <!-- (Опционально) Lombok для сокращения бойлерплейта -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Тесты -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
+
+================================================================================
+FILE: README.md
+================================================================================
+
+# Описание проекта и нужные штуки
+
+## Цель задания
+
+Научиться проектировать и реализовывать многопоточное приложение для автоматизированного сбора, обработки и хранения данных из веб-источников с соблюдением
+
+## Вариант 3:
+
+Разработать парсер вакансий, который будет собирать информацию о вакансиях с сайтов (hh.ru, SuperJob, Habr Career и.т.п.)
+
+Пример работы: входная ссылка — страница вакансии. Сервис собирает: название вакансии, компанию зарплату, требования, город, дату размещения. Этот сервис может быть полезен для анализа рынка труда или создания собственного агрегатора.
+
+## Общие требования к проекту:
+
+Вам необходимо реализовать MVC приложение на Spring Boot (достаточно бековой части, фронт можете реализовать по своему желанию).
+
+При проверке итоговый проект должен быть минимально настраиваемым со стороны проверяющего проект преподавателя. Проверяющий должен нажать кнопку пуск и без дополнительных настроек проверить логику проекта.
+Логику последовательности действий для проверяющего нужно описать в файле readme.md (например - запустить проект, выполнить POST - запрос на полный URL (указать по примеру http://localhost:8080/post), приложить JSON запроса.
+
+Требования по многопоточности:
+
+    · Использовать кастомный ExecutorService или ForkJoinPool.
+    · Добавить запуск по расписанию @Schedule или использовать ScheduledExecutorService.
+    · Использовать встроенную базу данных H2. Если не знакомы с JPA - можете использовать просто файлы для хранения информаций
+    · Сервис должен запускаться, работать и отдавать результаты через эндпоинт получения результатов, например: /answer. (параметры пагинации и сортировки добавьте по желанию).
+    · Добавьте извлечение результатов, возможность сортировки по входным параметрами из H2 через parallelStreamApi.
+    · Для межсервисного взаимодействия используйте webflux, resttemplate, feignclient.
+    · Используйте потокобезопасные структуры данных.
+
+
+================================================================================
+FILE: .mvn\wrapper\maven-wrapper.properties
+================================================================================
+
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+wrapperVersion=3.3.2
+distributionType=only-script
+distributionUrl=https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.11/apache-maven-3.9.11-bin.zip
+
+
+================================================================================
+FILE: src\main\java\com\shanaurin\jobparser\JobParserApplication.java
+================================================================================
+
+package com.shanaurin.jobparser;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class JobParserApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(JobParserApplication.class, args);
+        System.out.println("ok");
+		System.out.println(33);
+	}
+
+}
+
+
+================================================================================
+FILE: src\main\java\com\shanaurin\jobparser\config\ExecutorConfig.java
+================================================================================
+
+package com.shanaurin.jobparser.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+@Configuration
+public class ExecutorConfig {
+
+    @Bean(destroyMethod = "shutdown")
+    public ExecutorService vacancyExecutor() {
+        return new ThreadPoolExecutor(
+                4,
+                8,
+                60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(),
+                new ThreadFactory() {
+                    private final AtomicInteger count = new AtomicInteger(1);
+                    @Override
+                    public Thread newThread(Runnable r) {
+                        Thread thread = new Thread(r);
+                        thread.setName("vacancy-parser-" + count.getAndIncrement());
+                        thread.setDaemon(false);
+                        return thread;
+                    }
+                }
+        );
+    }
+}
+
+================================================================================
+FILE: src\main\java\com\shanaurin\jobparser\controller\ParseController.java
+================================================================================
+
+package com.shanaurin.jobparser.controller;
+
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api")
+public class ParseController {
+
+    private final ParseService parseService;
+
+    public ParseController(ParseService parseService) {
+        this.parseService = parseService;
+    }
+
+    @PostMapping("/parse")
+    public ResponseEntity<String> parse(@RequestBody ParseRequest request) {
+        parseService.parseUrls(request.getUrls());
+        return ResponseEntity.accepted().body("Parsing started");
+    }
+}
+
+================================================================================
+FILE: src\main\java\com\shanaurin\jobparser\controller\VacancyController.java
+================================================================================
+
+package com.shanaurin.jobparser.controller;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+// controller/VacancyController.java
+@RestController
+@RequestMapping("/api/vacancies")
+public class VacancyController {
+
+    private final VacancyService vacancyService;
+
+    public VacancyController(VacancyService vacancyService) {
+        this.vacancyService = vacancyService;
+    }
+
+    @GetMapping
+    public List<VacancyDto> getVacancies(
+            @RequestParam(required = false) String city,
+            @RequestParam(required = false) String company,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "ASC") String direction,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        return vacancyService.getVacancies(city, company, sortBy, direction, page, size);
+    }
+}
+
+================================================================================
+FILE: src\main\java\com\shanaurin\jobparser\logging\LoggingDaemon.java
+================================================================================
+
+package com.shanaurin.jobparser.logging;
+
+import org.springframework.stereotype.Component;
+
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+
+@Component
+public class LoggingDaemon {
+
+    private final BlockingQueue<String> logQueue = new LinkedBlockingQueue<>();
+
+    public LoggingDaemon() {
+        Thread daemon = new Thread(this::processLogs);
+        daemon.setDaemon(true);
+        daemon.setName("logging-daemon");
+        daemon.start();
+    }
+
+    public void log(String message) {
+        logQueue.offer(message);
+    }
+
+    private void processLogs() {
+        while (true) {
+            try {
+                String msg = logQueue.take();
+                // писать в файл или системный лог
+                System.out.println("[ASYNC LOG] " + msg);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+    }
+}
+
+================================================================================
+FILE: src\main\java\com\shanaurin\jobparser\model\Vacancy.java
+================================================================================
+
+package com.shanaurin.jobparser.model;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+
+import lombok.Getter;
+import lombok.Setter;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+
+@Entity
+@Table(name = "vacancies")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class Vacancy {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String source;
+    private String url;
+    private String title;
+    private String company;
+    private String city;
+    private String salary;
+
+    @Column(length = 2000)
+    private String requirements;
+
+    private LocalDateTime publishedAt;
+    private LocalDateTime createdAt;
+}
+
+================================================================================
+FILE: src\main\java\com\shanaurin\jobparser\model\dto\ParseRequest.java
+================================================================================
+
+package com.shanaurin.jobparser.model.dto;
+
+import java.util.List;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Getter
+@Setter
+public class ParseRequest {
+    private List<String> urls;
+}
+
+================================================================================
+FILE: src\main\java\com\shanaurin\jobparser\repository\VacancyRepository.java
+================================================================================
+
+package com.shanaurin.jobparser.repository;
+
+import com.shanaurin.jobparser.model.Vacancy;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+
+// repository/VacancyRepository.java
+public interface VacancyRepository extends JpaRepository<Vacancy, Long> {
+
+    List<Vacancy> findByCityIgnoreCase(String city);
+
+    List<Vacancy> findByCompanyIgnoreCase(String company);
+}
+
+================================================================================
+FILE: src\main\java\com\shanaurin\jobparser\service\ParseService.java
+================================================================================
+
+package com.shanaurin.jobparser.service;
+
+import com.shanaurin.jobparser.logging.LoggingDaemon;
+import com.shanaurin.jobparser.model.Vacancy;
+import com.shanaurin.jobparser.repository.VacancyRepository;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+
+@Service
+public class ParseService {
+
+    private final ExecutorService vacancyExecutor;
+    private final MockHtmlClient mockHtmlClient;
+    private final VacancyParser vacancyParser;
+    private final VacancyRepository vacancyRepository;
+    private final LoggingDaemon loggingDaemon;
+
+    public ParseService(ExecutorService vacancyExecutor,
+                        MockHtmlClient mockHtmlClient,
+                        VacancyParser vacancyParser,
+                        VacancyRepository vacancyRepository,
+                        LoggingDaemon loggingDaemon) {
+        this.vacancyExecutor = vacancyExecutor;
+        this.mockHtmlClient = mockHtmlClient;
+        this.vacancyParser = vacancyParser;
+        this.vacancyRepository = vacancyRepository;
+        this.loggingDaemon = loggingDaemon;
+    }
+
+    public void parseUrls(List<String> urls) {
+        for (String url : urls) {
+            vacancyExecutor.submit(() -> processUrl(url));
+        }
+    }
+
+    private void processUrl(String url) {
+        try {
+            String html = mockHtmlClient.fetchHtml(url);
+            Vacancy vacancy = vacancyParser.parse(html, url);
+            vacancyRepository.save(vacancy);
+            loggingDaemon.log("Saved vacancy from: " + url);
+        } catch (Exception e) {
+            loggingDaemon.log("Error processing url " + url + ": " + e.getMessage());
+        }
+    }
+}
+
+================================================================================
+FILE: src\main\java\com\shanaurin\jobparser\service\VacancyParser.java
+================================================================================
+
+package com.shanaurin.jobparser.service;
+
+import com.shanaurin.jobparser.model.Vacancy;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+@Service
+public class VacancyParser {
+
+    public Vacancy parse(String html, String url) {
+        Document doc = Jsoup.parse(html);
+
+        String title = doc.selectFirst(".title").text();
+        String company = doc.selectFirst(".company").text();
+        String city = doc.selectFirst(".city").text();
+        String salary = doc.selectFirst(".salary").text();
+        String requirements = doc.selectFirst(".requirements").text();
+        String dateStr = doc.selectFirst(".published-at").text();
+        LocalDateTime publishedAt = LocalDate.parse(dateStr).atStartOfDay();
+
+        Vacancy v = new Vacancy();
+        v.setTitle(title);
+        v.setCompany(company);
+        v.setCity(city);
+        v.setSalary(salary);
+        v.setRequirements(requirements);
+        v.setPublishedAt(publishedAt);
+        v.setCreatedAt(LocalDateTime.now());
+        v.setUrl(url);
+        v.setSource(determineSource(url));
+        return v;
+    }
+
+    private String determineSource(String url) {
+        if (url.contains("hh")) return "hh";
+        if (url.contains("superjob")) return "superjob";
+        if (url.contains("habr")) return "habr";
+        return "unknown";
+    }
+}
+
+================================================================================
+FILE: src\main\java\com\shanaurin\jobparser\service\client\WebFluxMockHtmlClient.java
+================================================================================
+
+package com.shanaurin.jobparser.service.client;
+
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+
+@Service
+public class WebFluxMockHtmlClient {
+
+    private final WebClient webClient;
+
+    public WebFluxMockHtmlClient(WebClient webClient) {
+        this.webClient = webClient;
+    }
+
+    public String fetchHtml(String url) {
+        return webClient.get()
+                .uri(url)
+                .retrieve()
+                .bodyToMono(String.class)
+                .block(); // для примера, блокируем
+    }
+}
+
+================================================================================
+FILE: src\main\java\com\shanaurin\jobparser\threading\CounterWorker.java
+================================================================================
+
+package com.shanaurin.jobparser.threading;
+
+public class CounterWorker implements Runnable {
+    private final int maxCount;
+
+    public CounterWorker(int maxCount) {
+        this.maxCount = maxCount;
+    }
+
+    @Override
+    public void run() {
+        for (int i = 1; i <= maxCount; i++) {
+            System.out.println("Поток: " + Thread.currentThread().getName() +
+                    ", порядковый номер: " + i);
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+    }
+}
+
+================================================================================
+FILE: src\main\java\com\shanaurin\jobparser\threading\LoggerThread.java
+================================================================================
+
+package com.shanaurin.jobparser.threading;
+
+public class LoggerThread extends Thread {
+    private final int maxCount;
+
+    public LoggerThread(String name, int maxCount) {
+        super(name);
+        this.maxCount = maxCount;
+    }
+
+    @Override
+    public void run() {
+        for (int i = 1; i <= maxCount; i++) {
+            System.out.println("Поток: " + getName() +
+                    ", порядковый номер: " + i);
+            try {
+                Thread.sleep(1500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+    }
+}
+
+================================================================================
+FILE: src\main\resources\application.properties
+================================================================================
+
+spring.application.name=vacancy-parser
+
+# --- H2 + JPA ---
+
+spring.datasource.url=jdbc:h2:mem:job-parser-db
+spring.datasource.driver-class-name=org.h2.Driver
+spring.datasource.username=sa
+spring.datasource.password=
+
+spring.jpa.database-platform=org.hibernate.dialect.H2Dialect
+
+spring.jpa.hibernate.ddl-auto=update
+# ????:
+# spring.jpa.hibernate.ddl-auto=none
+
+spring.jpa.show-sql=true
+
+spring.sql.init.mode=always
+spring.sql.init.schema-locations=classpath:schema.sql
+spring.sql.init.data-locations=classpath:data.sql
+
+# --- ??????? H2 ---
+
+spring.h2.console.enabled=true
+spring.h2.console.path=/h2-console
+
+logging.level.org.hibernate.SQL=DEBUG
+logging.level.org.hibernate.type.descriptor.sql.BasicBinder=TRACE
+
+# --- Web server ---
+
+server.port=8080
+
+# logging.level.org.springframework.web.reactive=DEBUG
+# logging.level.reactor.netty=DEBUG
+
+feign.compression.request.enabled=true
+feign.compression.response.enabled=true
+logging.level.org.springframework.cloud.openfeign=INFO
+
+scheduler.vacancy.fixed-rate-ms=60000
+
+================================================================================
+FILE: src\test\java\com\example\demo\DemoApplicationTests.java
+================================================================================
+
+package com.example.demo;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+
+@SpringBootTest
+class DemoApplicationTests {
+
+	@Test
+	void contextLoads() {
+	}
+
+}
+
+

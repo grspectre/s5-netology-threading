@@ -1,29 +1,34 @@
 package com.shanaurin.jobparser.controller;
 
-import com.shanaurin.jobparser.model.Vacancy;
-import com.shanaurin.jobparser.service.VacancyParsingService;
-import com.shanaurin.jobparser.service.ThreadManagementService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.*;
+import com.shanaurin.jobparser.model.dto.VacancyDto;
+import com.shanaurin.jobparser.service.VacancyService;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
+// controller/VacancyController.java
 @RestController
 @RequestMapping("/api/vacancies")
 public class VacancyController {
 
-    @Autowired
-    private VacancyParsingService parsingService;
+    private final VacancyService vacancyService;
 
-    @Autowired
-    private ThreadManagementService threadService;
-
-    @PostMapping("/parse")
-    public Vacancy parseVacancy(@RequestParam String url) {
-        return parsingService.parseVacancy(url);
+    public VacancyController(VacancyService vacancyService) {
+        this.vacancyService = vacancyService;
     }
 
-    @PostMapping("/demo-threads")
-    public String demoThreads() {
-        threadService.demonstrateThreads();
-        return "Потоки запущены. Проверьте консоль.";
+    @GetMapping
+    public List<VacancyDto> getVacancies(
+            @RequestParam(required = false) String city,
+            @RequestParam(required = false) String company,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "ASC") String direction,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        return vacancyService.getVacancies(city, company, sortBy, direction, page, size);
     }
 }
