@@ -5,7 +5,7 @@ import os
 SOURCE_EXTENSIONS = {
     ".java", ".kt", ".kts", ".groovy", ".scala",
     ".xml", ".properties", ".yml", ".yaml", ".json",
-    ".gradle", ".gitignore", ".md"
+    ".gradle", ".gitignore", ".md", ".html"
 }
 
 # Можно добавить/убрать каталоги, которые нужно пропускать

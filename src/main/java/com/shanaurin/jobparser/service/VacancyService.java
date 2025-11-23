@@ -57,11 +57,15 @@ public class VacancyService {
     private VacancyDto toDto(Vacancy v) {
         VacancyDto dto = new VacancyDto();
         dto.setId(v.getId());
+        dto.setSource(v.getSource());
+        dto.setUrl(v.getUrl());
         dto.setTitle(v.getTitle());
         dto.setCompany(v.getCompany());
         dto.setCity(v.getCity());
         dto.setSalary(v.getSalary());
+        dto.setRequirements(v.getRequirements());
         dto.setPublishedAt(v.getPublishedAt());
+        dto.setCreatedAt(v.getCreatedAt());
         return dto;
     }
 }

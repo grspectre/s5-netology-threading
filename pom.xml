@@ -19,7 +19,7 @@
     <description>Vacancy parser</description>
 
     <properties>
-        <java.version>17</java.version>
+        <java.version>21</java.version>
         <!-- Версия Spring Cloud, совместимая со Spring Boot 3.5.x (обнови при необходимости) -->
         <spring-cloud.version>2025.0.0</spring-cloud.version>
     </properties>
@@ -51,6 +51,10 @@
             <artifactId>spring-boot-starter-webflux</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+        </dependency>
         <!-- JPA + H2 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -97,6 +101,15 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>21</source>
+                    <target>21</target>
+                    <compilerArgs>--enable-preview</compilerArgs>
+                </configuration>
             </plugin>
         </plugins>
     </build>
