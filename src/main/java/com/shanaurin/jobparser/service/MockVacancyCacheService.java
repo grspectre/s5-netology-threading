@@ -20,7 +20,7 @@ public class MockVacancyCacheService {
     }
 
     public VacancyDto getOrCreate(String type, Long id) {
-        String key = STR."\{type}:\{id}";
+        String key = type + ":" + id;
         return cache.computeIfAbsent(key, k -> vacancyRandomGenerator.generateRandomVacancy(type, id));
     }
 }

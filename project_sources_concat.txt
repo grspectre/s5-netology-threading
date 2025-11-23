@@ -657,33 +657,48 @@ public class MockHtmlController {
 }
 
 ================================================================================
+FILE: src\main\java\com\shanaurin\jobparser\controller\PageController.java
+================================================================================
+
+package com.shanaurin.jobparser.controller;
+
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+
+@Controller
+public class PageController {
+
+    @GetMapping("/")
+    public String index() {
+        return "index";
+    }
+}
+
+================================================================================
 FILE: src\main\java\com\shanaurin\jobparser\controller\ParseController.java
 ================================================================================
 
 package com.shanaurin.jobparser.controller;
 
 import com.shanaurin.jobparser.model.dto.ParseRequest;
-import com.shanaurin.jobparser.service.ParseService;
+import com.shanaurin.jobparser.service.UrlQueueService;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api")
 public class ParseController {
 
-    private final ParseService parseService;
+    private final UrlQueueService urlQueueService;
 
-    public ParseController(ParseService parseService) {
-        this.parseService = parseService;
+    public ParseController(UrlQueueService urlQueueService) {
+        this.urlQueueService = urlQueueService;
     }
 
     @PostMapping("/parse")
     public ResponseEntity<String> parse(@RequestBody ParseRequest request) {
-        parseService.parseUrls(request.getUrls());
-        return ResponseEntity.accepted().body("Parsing started");
+        urlQueueService.addAll(request.getUrls());
+        return ResponseEntity.accepted().body("URLs added to queue");
     }
 }
 
@@ -962,6 +977,45 @@ public class ParseService {
 }
 
 ================================================================================
+FILE: src\main\java\com\shanaurin\jobparser\service\UrlQueueService.java
+================================================================================
+
+package com.shanaurin.jobparser.service;
+
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+
+@Service
+public class UrlQueueService {
+
+    private final BlockingQueue<String> urlQueue = new LinkedBlockingQueue<>();
+
+    public void addAll(List<String> urls) {
+        if (urls == null || urls.isEmpty()) {
+            return;
+        }
+        urlQueue.addAll(urls);
+    }
+
+    /**
+     * Забирает до maxCount урлов из очереди (не блокируясь, если их меньше).
+     */
+    public List<String> pollBatch(int maxCount) {
+        List<String> result = new ArrayList<>(maxCount);
+        urlQueue.drainTo(result, maxCount);
+        return result;
+    }
+
+    public int size() {
+        return urlQueue.size();
+    }
+}
+
+================================================================================
 FILE: src\main\java\com\shanaurin\jobparser\service\VacancyParser.java
 ================================================================================
 
@@ -970,24 +1024,44 @@ package com.shanaurin.jobparser.service;
 import com.shanaurin.jobparser.model.Vacancy;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 
 @Service
 public class VacancyParser {
 
-    public Vacancy parse(String html, String url) {
+    public Vacancy parse(String html, String originalUrl) {
         Document doc = Jsoup.parse(html);
 
-        String title = doc.selectFirst(".title").text();
-        String company = doc.selectFirst(".company").text();
-        String city = doc.selectFirst(".city").text();
-        String salary = doc.selectFirst(".salary").text();
-        String requirements = doc.selectFirst(".requirements").text();
-        String dateStr = doc.selectFirst(".published-at").text();
-        LocalDateTime publishedAt = LocalDate.parse(dateStr).atStartOfDay();
+        String title        = textOrNull(doc.selectFirst("h1.title"));
+        String salary       = textOrNull(doc.selectFirst("div.salary"));
+        String company      = textOrNull(selectMetaValueAfterLabel(doc, "Компания:"));
+        String city         = textOrNull(selectMetaValueAfterLabel(doc, "Город:"));
+        String sourceBadge  = textOrNull(doc.selectFirst(".badge"));
+
+        // ссылка-источник: <a class="link" ... th:href="${url}" th:text="${url}">
+        Element urlEl = doc.selectFirst("a.link");
+        String vacancyUrl = urlEl != null ? urlEl.attr("href") : null;
+        if (vacancyUrl == null || vacancyUrl.isBlank()) {
+            // на всякий случай используем текст внутри ссылки
+            vacancyUrl = textOrNull(urlEl);
+        }
+
+        // даты: "Опубликовано:" и "Загружено в систему:"
+        String publishedAtStr = textOrNull(selectMetaValueAfterLabel(doc, "Опубликовано:"));
+        String createdAtStr   = textOrNull(selectMetaValueAfterLabel(doc, "Загружено в систему:"));
+
+        LocalDateTime publishedAt = parseDateTimeSafe(publishedAtStr);
+        LocalDateTime createdAt   = parseDateTimeSafe(createdAtStr);
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
+
+        // блок требований: <div class="requirements" th:text="${requirements}">
+        String requirements = textOrNull(doc.selectFirst("div.requirements"));
 
         Vacancy v = new Vacancy();
         v.setTitle(title);
@@ -996,16 +1070,66 @@ public class VacancyParser {
         v.setSalary(salary);
         v.setRequirements(requirements);
         v.setPublishedAt(publishedAt);
-        v.setCreatedAt(LocalDateTime.now());
-        v.setUrl(url);
-        v.setSource(determineSource(url));
+        v.setCreatedAt(createdAt);
+
+        // URL, который реально парсили (endpoint мок‑страницы)
+        v.setUrl(originalUrl);
+
+        // source: лучше всего брать из бэйджа (там, где th:text="${source}")
+        v.setSource(sourceBadge != null ? sourceBadge : determineSourceFromUrl(originalUrl));
+
         return v;
     }
 
-    private String determineSource(String url) {
-        if (url.contains("hh")) return "hh";
-        if (url.contains("superjob")) return "superjob";
-        if (url.contains("habr")) return "habr";
+    /**
+     * Ищет в блоках .meta такое:
+     *
+     * <div class="meta">
+     *   <span class="label">Компания:</span>
+     *   <span>ООО Ромашка</span>
+     * </div>
+     *
+     * И возвращает текст второго span.
+     */
+    private Element selectMetaValueAfterLabel(Document doc, String labelText) {
+        for (Element meta : doc.select("div.meta")) {
+            Element label = meta.selectFirst("span.label");
+            if (label != null && label.text().trim().equalsIgnoreCase(labelText)) {
+                // берём первый span после label
+                for (Element span : meta.select("span")) {
+                    if (!span.hasClass("label")) {
+                        return span;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private String textOrNull(Element el) {
+        return el != null ? el.text().trim() : null;
+    }
+
+    private LocalDateTime parseDateTimeSafe(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        try {
+            // в шаблоне пример: 2024-10-01T10:15
+            return LocalDateTime.parse(text.trim());
+        } catch (DateTimeParseException e) {
+            return null;
+        }
+    }
+
+    private String determineSourceFromUrl(String url) {
+        if (url == null) return "unknown";
+        String lower = url.toLowerCase();
+        if (lower.contains("hh")) return "hh.ru";
+        if (lower.contains("superjob")) return "superjob.ru";
+        if (lower.contains("habr")) return "career.habr.com";
+        if (lower.contains("rabota")) return "rabota.ru";
+        if (lower.contains("linkedin")) return "linkedin.com";
         return "unknown";
     }
 }
@@ -1073,11 +1197,15 @@ public class VacancyService {
     private VacancyDto toDto(Vacancy v) {
         VacancyDto dto = new VacancyDto();
         dto.setId(v.getId());
+        dto.setSource(v.getSource());
+        dto.setUrl(v.getUrl());
         dto.setTitle(v.getTitle());
         dto.setCompany(v.getCompany());
         dto.setCity(v.getCity());
         dto.setSalary(v.getSalary());
+        dto.setRequirements(v.getRequirements());
         dto.setPublishedAt(v.getPublishedAt());
+        dto.setCreatedAt(v.getCreatedAt());
         return dto;
     }
 }
@@ -1116,31 +1244,33 @@ FILE: src\main\java\com\shanaurin\jobparser\service\scheduler\VacancyScheduler.j
 package com.shanaurin.jobparser.service.scheduler;
 
 import com.shanaurin.jobparser.service.ParseService;
+import com.shanaurin.jobparser.service.UrlQueueService;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
-// service/scheduler/VacancyScheduler.java
 @Service
 public class VacancyScheduler {
 
     private final ParseService parseService;
+    private final UrlQueueService urlQueueService;
 
-    // демо-список урлов (можно хранить в конфиге)
-    private final List<String> demoUrls = List.of(
-            "http://mock-hh.local/vacancy/1",
-            "http://mock-superjob.local/vacancy/2"
-    );
-
-    public VacancyScheduler(ParseService parseService) {
+    public VacancyScheduler(ParseService parseService,
+                            UrlQueueService urlQueueService) {
         this.parseService = parseService;
+        this.urlQueueService = urlQueueService;
     }
 
-    // раз в 1 минуту
-    @Scheduled(fixedRate = 60_000)
+    // Раз в 5 секунд (пример)
+    @Scheduled(fixedRateString = "${scheduler.vacancy.fixed-rate-ms:5000}")
     public void scheduledParsing() {
-        parseService.parseUrls(demoUrls);
+        // забираем пачку урлов, например, до 50 штук
+        List<String> urls = urlQueueService.pollBatch(50);
+        if (urls.isEmpty()) {
+            return;
+        }
+        parseService.parseUrls(urls);
     }
 }
 
@@ -1189,6 +1319,251 @@ feign.compression.response.enabled=true
 logging.level.org.springframework.cloud.openfeign=INFO
 
 scheduler.vacancy.fixed-rate-ms=60000
+
+================================================================================
+FILE: src\main\resources\templates\index.html
+================================================================================
+
+<!-- src/main/resources/templates/index.html -->
+<!DOCTYPE html>
+<html lang="ru" xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Вакансии – демо</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f5f5f5;
+        }
+
+        .page {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 24px 16px 48px;
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            margin-bottom: 16px;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 200px;
+            font-family: monospace;
+            font-size: 13px;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+
+        button {
+            margin: 8px 8px 8px 0;
+            padding: 8px 16px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            background: #2b7cff;
+            color: #fff;
+        }
+
+        button.secondary {
+            background: #666;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: default;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            margin-top: 16px;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 6px 8px;
+        }
+
+        th {
+            background: #f0f0f0;
+        }
+
+        .status {
+            font-size: 13px;
+            color: #555;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="page">
+        <div class="card">
+            <h2>Генерация URL для мок‑вакансий</h2>
+            <p>Здесь можно сгенерировать 20 URL вида <code>/mock/vacancy/{source}/{id}</code> и отправить их на парсинг.
+            </p>
+
+            <textarea id="urlsTextarea"></textarea>
+
+            <div>
+                <button id="generateBtn" type="button">Сгенерировать 20 URL</button>
+                <button id="sendBtn" type="button">Отправить на парсинг</button>
+            </div>
+            <div class="status" id="parseStatus"></div>
+        </div>
+
+        <div class="card">
+            <h2>Просмотр вакансий из H2 </h2>
+            <div><a href="/h2-console">Ссылка на H2 консоль</a></div>
+
+            <!-- Блок фильтров -->
+            <div style="margin-top: 12px; margin-bottom: 8px;">
+                <label>
+                    Город:
+                    <input id="filterCity" type="text" placeholder="Москва" style="margin-right: 8px;">
+                </label>
+                <label>
+                    Компания:
+                    <input id="filterCompany" type="text" placeholder="Яндекс">
+                </label>
+            </div>
+
+            <div>
+                <button id="loadVacanciesBtn" type="button" class="secondary">Загрузить вакансии</button>
+            </div>
+            <div class="status" id="vacancyStatus"></div>
+            <div id="vacancyTableWrapper"></div>
+        </div>
+    </div>
+
+    <script>
+        // Список источников должен совпадать с VacancyConfig.SOURCES
+        const SOURCES = ["hh.ru", "superjob.ru", "rabota.ru", "linkedin.com", "career.habr.com"];
+
+        function generateUrls(count = 20) {
+            const urls = [];
+            const { origin } = window.location; // протокол + хост + порт, например: https://example.com
+            for (let i = 0; i < count; i++) {
+                const source = SOURCES[Math.floor(Math.random() * SOURCES.length)];
+                const id = 1 + Math.floor(Math.random() * 100000);
+
+                urls.push(`${origin}/mock/vacancy/${source}/${id}`);
+            }
+            document.getElementById('urlsTextarea').value = urls.join('\n');
+        }
+
+        async function sendToParse() {
+            const textarea = document.getElementById('urlsTextarea');
+            const statusEl = document.getElementById('parseStatus');
+            const raw = textarea.value.trim();
+            if (!raw) {
+                statusEl.textContent = "Поле пустое, нечего отправлять.";
+                return;
+            }
+            const urls = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+            const body = { urls: urls };
+
+            statusEl.textContent = "Отправка...";
+            try {
+                const resp = await fetch('/api/parse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const text = await resp.text();
+                statusEl.textContent = `Ответ сервера: ${resp.status} ${resp.statusText} – ${text}`;
+            } catch (e) {
+                statusEl.textContent = "Ошибка при отправке: " + e.message;
+            }
+        }
+
+        async function loadVacancies() {
+            const statusEl = document.getElementById('vacancyStatus');
+            const wrapper = document.getElementById('vacancyTableWrapper');
+            const city = document.getElementById('filterCity').value.trim();
+            const company = document.getElementById('filterCompany').value.trim();
+
+            statusEl.textContent = "Загрузка...";
+            wrapper.innerHTML = "";
+
+            try {
+                const params = new URLSearchParams();
+                if (city) params.append('city', city);
+                if (company) params.append('company', company);
+
+                const query = params.toString();
+                const url = query ? `/api/vacancies?${query}` : '/api/vacancies';
+
+                const resp = await fetch(url);
+                if (!resp.ok) {
+                    statusEl.textContent = `Ошибка: ${resp.status} ${resp.statusText}`;
+                    return;
+                }
+                const data = await resp.json();
+                statusEl.textContent = `Загружено записей: ${data.length}`;
+
+                if (!data.length) {
+                    wrapper.textContent = "Нет данных.";
+                    return;
+                }
+
+                const table = document.createElement('table');
+                const thead = document.createElement('thead');
+                const headerRow = document.createElement('tr');
+                ['ID', 'Название', 'Компания', 'Город', 'Зарплата', 'Дата публикации'].forEach(h => {
+                    const th = document.createElement('th');
+                    th.textContent = h;
+                    headerRow.appendChild(th);
+                });
+                thead.appendChild(headerRow);
+                table.appendChild(thead);
+
+                const tbody = document.createElement('tbody');
+                data.forEach(v => {
+                    const tr = document.createElement('tr');
+                    const cells = [
+                        v.id,
+                        v.title,
+                        v.company,
+                        v.city,
+                        v.salary,
+                        v.publishedAt
+                    ];
+                    cells.forEach(val => {
+                        const td = document.createElement('td');
+                        td.textContent = val !== null && val !== undefined ? val : '';
+                        tr.appendChild(td);
+                    });
+                    tbody.appendChild(tr);
+                });
+                table.appendChild(tbody);
+                wrapper.appendChild(table);
+            } catch (e) {
+                statusEl.textContent = "Ошибка при загрузке: " + e.message;
+            }
+        }
+
+        document.getElementById('generateBtn').addEventListener('click', generateUrls);
+        document.getElementById('sendBtn').addEventListener('click', sendToParse);
+        document.getElementById('loadVacanciesBtn').addEventListener('click', loadVacancies);
+
+        // при первом открытии сразу сгенерируем 20 URL
+        generateUrls();
+    </script>
+</body>
+
+</html>
 
 ================================================================================
 FILE: src\main\resources\templates\vacancy-mock.html
