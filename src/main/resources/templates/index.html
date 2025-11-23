@@ -124,10 +124,14 @@
     <script>
         // Список источников должен совпадать с VacancyConfig.SOURCES
         const SOURCES = ["hh.ru", "superjob.ru", "rabota.ru", "linkedin.com", "career.habr.com"];
+        
+        function generateUrlsClick(ev) {
+            generateUrls();
+        }
 
         function generateUrls(count = 20) {
             const urls = [];
-            const { origin } = window.location; // протокол + хост + порт, например: https://example.com
+            const origin = window.location.origin;
             for (let i = 0; i < count; i++) {
                 const source = SOURCES[Math.floor(Math.random() * SOURCES.length)];
                 const id = 1 + Math.floor(Math.random() * 100000);
@@ -228,7 +232,7 @@
             }
         }
 
-        document.getElementById('generateBtn').addEventListener('click', generateUrls);
+        document.getElementById('generateBtn').addEventListener('click', generateUrlsClick);
         document.getElementById('sendBtn').addEventListener('click', sendToParse);
         document.getElementById('loadVacanciesBtn').addEventListener('click', loadVacancies);
 
