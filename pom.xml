@@ -67,6 +67,18 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Actuator -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- Prometheus registry for Micrometer -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
         <!-- OpenFeign (для межсервисного взаимодействия) -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
