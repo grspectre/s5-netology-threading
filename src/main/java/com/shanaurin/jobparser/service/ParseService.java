@@ -78,13 +78,30 @@ public class ParseService {
         Timer.Sample urlSample = metrics.startUrlTimer();
 
         try {
-            String html = mockHtmlClient.fetchHtml(url);
+            Timer.Sample fetchSample = metrics.startFetchTimer();
+            String html;
+            try {
+                html = mockHtmlClient.fetchHtml(url);
+            } finally {
+                metrics.stopFetchTimer(fetchSample);
+            }
 
-            Vacancy vacancy = vacancyParser.parse(html, url);
+            Timer.Sample parseSample = metrics.startParseTimer();
+            Vacancy vacancy;
+            try {
+                vacancy = vacancyParser.parse(html, url);
+            } finally {
+                metrics.stopParseTimer(parseSample);
+            }
 
-            vacancyRepository.save(vacancy);
+            Timer.Sample dbSample = metrics.startDbTimer();
+            try {
+                vacancyRepository.save(vacancy);
+            } finally {
+                metrics.stopDbTimer(dbSample);
+            }
+
             metrics.incSaved();
-
             loggingDaemon.log("Saved vacancy from: " + url);
 
         } catch (Exception e) {
@@ -94,7 +111,6 @@ public class ParseService {
             metrics.stopUrlTimer(urlSample);
         }
     }
-
     private String classifyError(Exception e) {
         // HTTP/клиентские ошибки WebClient
         if (e instanceof WebClientResponseException || e instanceof WebClientRequestException) {

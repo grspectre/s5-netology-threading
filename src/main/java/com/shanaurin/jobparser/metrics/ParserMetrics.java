@@ -22,6 +22,10 @@ public class ParserMetrics {
     private final Counter urlErrorParse;
     private final Counter urlErrorDb;
     private final Counter urlErrorUnknown;
+    // ParserMetrics.java (добавить поля)
+    private final Timer fetchTimer;
+    private final Timer parseTimer;
+    private final Timer dbTimer;
 
     public ParserMetrics(MeterRegistry registry) {
         this.registry = registry;
@@ -63,6 +67,24 @@ public class ParserMetrics {
                 .description("URL processing errors by type")
                 .tag("type", "unknown")
                 .register(registry);
+
+        this.fetchTimer = Timer.builder("jobparser.stage.fetch.time")
+                .description("Fetch HTML stage time")
+                .publishPercentileHistogram(true)
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(registry);
+
+        this.parseTimer = Timer.builder("jobparser.stage.parse.time")
+                .description("Parse HTML stage time")
+                .publishPercentileHistogram(true)
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(registry);
+
+        this.dbTimer = Timer.builder("jobparser.stage.db.time")
+                .description("DB save stage time")
+                .publishPercentileHistogram(true)
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(registry);
     }
 
     public Timer.Sample startUrlTimer() {
@@ -96,5 +118,29 @@ public class ParserMetrics {
             case "db" -> urlErrorDb.increment();
             default -> urlErrorUnknown.increment();
         }
+    }
+
+    public Timer.Sample startFetchTimer() {
+        return Timer.start(registry);
+    }
+
+    public void stopFetchTimer(Timer.Sample s) {
+        s.stop(fetchTimer);
+    }
+
+    public Timer.Sample startParseTimer() {
+        return Timer.start(registry);
+    }
+
+    public void stopParseTimer(Timer.Sample s) {
+        s.stop(parseTimer);
+    }
+
+    public Timer.Sample startDbTimer() {
+        return Timer.start(registry);
+    }
+
+    public void stopDbTimer(Timer.Sample s) {
+        s.stop(dbTimer);
     }
 }
