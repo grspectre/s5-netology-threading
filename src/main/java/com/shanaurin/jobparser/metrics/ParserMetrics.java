@@ -115,8 +115,8 @@ public class ParserMetrics {
         urlProcessed.increment();
     }
 
-    public void incSaved() {
-        urlSaved.increment();
+    public void incSaved(int count) {
+        urlSaved.increment(count);
     }
 
     public void incError(String type) {

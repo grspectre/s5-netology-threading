@@ -11,11 +11,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 
 @Service
 public class ParseService {
+
+    private static final int BATCH_SIZE = 50;
 
     private final ExecutorService vacancyExecutor;
     private final WebFluxMockHtmlClient mockHtmlClient;
@@ -23,6 +27,10 @@ public class ParseService {
     private final VacancyRepository vacancyRepository;
     private final LoggingDaemon loggingDaemon;
     private final ParserMetrics metrics;
+
+    // batch state (thread-safe via lock)
+    private final Object batchLock = new Object();
+    private final List<Vacancy> batch = new ArrayList<>();
 
     public ParseService(ExecutorService vacancyExecutor,
                         WebFluxMockHtmlClient mockHtmlClient,
@@ -44,11 +52,8 @@ public class ParseService {
         }
 
         Timer.Sample batchSample = metrics.startBatchTimer();
+        CountDownLatch latch = new CountDownLatch(urls.size());
 
-        // Счётчик "сколько задач из batch осталось"
-        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(urls.size());
-
-        // Запускаем обработку каждого URL
         for (String url : urls) {
             vacancyExecutor.submit(() -> {
                 try {
@@ -59,13 +64,13 @@ public class ParseService {
             });
         }
 
-        // НЕ блокируем вызывающий поток: ждём completion в отдельной задаче
+        // не блокируем вызывающий поток: ждём completion в отдельной задаче
         vacancyExecutor.submit(() -> {
             try {
                 latch.await();
+                flushBatch(); // важно: слить остаток < 50
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                // interruption трактуем как unknown/прочее — по желанию можно завести отдельный тип
                 metrics.incError("unknown");
             } finally {
                 metrics.stopBatchTimer(batchSample);
@@ -94,15 +99,19 @@ public class ParseService {
                 metrics.stopParseTimer(parseSample);
             }
 
-            Timer.Sample dbSample = metrics.startDbTimer();
-            try {
-                vacancyRepository.save(vacancy);
-            } finally {
-                metrics.stopDbTimer(dbSample);
+            // Собираем в batch и при необходимости "снимаем" пачку на сохранение
+            List<Vacancy> toSave = null;
+            synchronized (batchLock) {
+                batch.add(vacancy);
+                if (batch.size() >= BATCH_SIZE) {
+                    toSave = new ArrayList<>(batch);
+                    batch.clear();
+                }
             }
 
-            metrics.incSaved();
-            loggingDaemon.log("Saved vacancy from: " + url);
+            if (toSave != null) {
+                saveBatch(toSave, url);
+            }
 
         } catch (Exception e) {
             metrics.incError(classifyError(e));
@@ -111,16 +120,38 @@ public class ParseService {
             metrics.stopUrlTimer(urlSample);
         }
     }
+
+    private void flushBatch() {
+        List<Vacancy> toSave;
+        synchronized (batchLock) {
+            if (batch.isEmpty()) {
+                return;
+            }
+            toSave = new ArrayList<>(batch);
+            batch.clear();
+        }
+        saveBatch(toSave, "flush");
+    }
+
+    private void saveBatch(List<Vacancy> toSave, String context) {
+        Timer.Sample dbSample = metrics.startDbTimer();
+        try {
+            vacancyRepository.saveAll(toSave);
+        } finally {
+            metrics.stopDbTimer(dbSample);
+        }
+
+        metrics.incSaved(toSave.size());
+        loggingDaemon.log("Saved batch of " + toSave.size() + " vacancies (context: " + context + ")");
+    }
+
     private String classifyError(Exception e) {
-        // HTTP/клиентские ошибки WebClient
         if (e instanceof WebClientResponseException || e instanceof WebClientRequestException) {
             return "http";
         }
-        // ошибки БД (Spring Data)
         if (e instanceof DataAccessException) {
             return "db";
         }
-        // ошибки парсинга (например, NPE из-за структуры HTML) — можно сузить, если введёшь свой ParseException
         if (e instanceof IllegalArgumentException || e instanceof NullPointerException) {
             return "parse";
         }
