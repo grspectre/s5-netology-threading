@@ -1,8 +1,11 @@
 package com.shanaurin.jobparser.metrics;
 
+import com.shanaurin.jobparser.repository.VacancyRepository;
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import org.springframework.data.repository.CrudRepository;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.TimeUnit;
@@ -27,7 +30,7 @@ public class ParserMetrics {
     private final Timer parseTimer;
     private final Timer dbTimer;
 
-    public ParserMetrics(MeterRegistry registry) {
+    public ParserMetrics(MeterRegistry registry, VacancyRepository vacancyRepository) {
         this.registry = registry;
 
         this.urlTotalTimer = Timer.builder("jobparser.url.total.time")
@@ -84,6 +87,11 @@ public class ParserMetrics {
                 .description("DB save stage time")
                 .publishPercentileHistogram(true)
                 .publishPercentiles(0.5, 0.95, 0.99)
+                .register(registry);
+
+        Gauge.builder("jobparser.db.records.total",
+                vacancyRepository, CrudRepository::count)
+                .description("Total number of vacancies in database")
                 .register(registry);
     }
 
