@@ -4,7 +4,7 @@ import com.shanaurin.jobparser.logging.LoggingDaemon;
 import com.shanaurin.jobparser.metrics.ParserMetrics;
 import com.shanaurin.jobparser.model.Vacancy;
 import com.shanaurin.jobparser.repository.VacancyRepository;
-import io.opentelemetry.api.trace.Tracer;
+import io.micrometer.tracing.Tracer;
 import com.shanaurin.jobparser.service.client.WebFluxMockHtmlClient;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
