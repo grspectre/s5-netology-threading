@@ -12,3 +12,7 @@ CREATE TABLE vacancies (
     published_at TIMESTAMP,
     created_at TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_vacancies_city ON vacancies(city);
+CREATE INDEX IF NOT EXISTS idx_vacancies_company ON vacancies(company);
+CREATE INDEX IF NOT EXISTS idx_vacancies_published_at ON vacancies(published_at);

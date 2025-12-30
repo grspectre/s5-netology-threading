@@ -1,16 +1,18 @@
 package com.shanaurin.jobparser.service;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.*;
 
 class UrlQueueServiceTest {
 
     @Test
     void addAllAndPollBatch_shouldWorkCorrectly() {
-        UrlQueueService service = new UrlQueueService();
+        UrlQueueService service = new UrlQueueService(mock(MeterRegistry.class));
 
         service.addAll(List.of("u1", "u2", "u3"));
 
@@ -27,7 +29,7 @@ class UrlQueueServiceTest {
 
     @Test
     void addAll_nullOrEmptyShouldBeIgnored() {
-        UrlQueueService service = new UrlQueueService();
+        UrlQueueService service = new UrlQueueService(mock(MeterRegistry.class));
         service.addAll(null);
         service.addAll(List.of());
 

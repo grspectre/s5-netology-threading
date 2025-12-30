@@ -93,6 +93,7 @@
             <div>
                 <button id="generateBtn" type="button">Сгенерировать 20 URL</button>
                 <button id="sendBtn" type="button">Отправить на парсинг</button>
+                <button id="sendBtnForce" type="button">Отправить на парсинг без шедулера</button>
             </div>
             <div class="status" id="parseStatus"></div>
         </div>
@@ -155,6 +156,31 @@
             statusEl.textContent = "Отправка...";
             try {
                 const resp = await fetch('/api/parse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const text = await resp.text();
+                statusEl.textContent = `Ответ сервера: ${resp.status} ${resp.statusText} – ${text}`;
+            } catch (e) {
+                statusEl.textContent = "Ошибка при отправке: " + e.message;
+            }
+        }
+
+        async function sendToParseForce() {
+            const textarea = document.getElementById('urlsTextarea');
+            const statusEl = document.getElementById('parseStatus');
+            const raw = textarea.value.trim();
+            if (!raw) {
+                statusEl.textContent = "Поле пустое, нечего отправлять.";
+                return;
+            }
+            const urls = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+            const body = { urls: urls };
+
+            statusEl.textContent = "Отправка...";
+            try {
+                const resp = await fetch('/api/parse/force', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
@@ -234,6 +260,7 @@
 
         document.getElementById('generateBtn').addEventListener('click', generateUrlsClick);
         document.getElementById('sendBtn').addEventListener('click', sendToParse);
+        document.getElementById('sendBtnForce').addEventListener('click', sendToParseForce);
         document.getElementById('loadVacanciesBtn').addEventListener('click', loadVacancies);
 
         // при первом открытии сразу сгенерируем 20 URL

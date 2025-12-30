@@ -12,7 +12,6 @@ import java.util.concurrent.ThreadLocalRandom;
 @Configuration
 public class VacancyGeneratorConfig {
 
-
     private final Random random = new Random();
 
     @Bean
@@ -22,6 +21,10 @@ public class VacancyGeneratorConfig {
 
     public class VacancyRandomGenerator {
 
+        // Переиспользуем StringBuilder, чтобы меньше создавать временных объектов
+        private static final ThreadLocal<StringBuilder> STRING_BUILDER =
+                ThreadLocal.withInitial(() -> new StringBuilder(256));
+
         public VacancyDto generateRandomVacancy(String source, Long id) {
             String sourceValue = "unknown.tld";
             if (VacancyConfig.SOURCES.contains(source)) {
@@ -29,11 +32,9 @@ public class VacancyGeneratorConfig {
             }
             String title = randomFrom(VacancyConfig.VACANCY_TITLES);
             String city = randomFrom(VacancyConfig.CITIES);
-
             String company = randomFrom(VacancyConfig.COMPANIES);
 
             String salary = randomSalary();
-
             String requirements = randomRequirements();
 
             LocalDateTime createdAt = LocalDateTime.now();
@@ -61,16 +62,19 @@ public class VacancyGeneratorConfig {
 
         private String randomSalary() {
             // Пример: "от 150 000 до 250 000 руб. на руки"
-            int min = 80_000 + random.nextInt(120_000);   // 80k–200k
-            int max = min + 20_000 + random.nextInt(100_000); // +20k–120k
+            int min = 80_000 + random.nextInt(120_000);        // 80k–200k
+            int max = min + 20_000 + random.nextInt(100_000);  // +20k–120k
             return String.format("от %,d до %,d руб. на руки", min, max)
-                    .replace('\u00A0', ' '); // на всякий случай пробелы
+                    .replace('\u00A0', ' ');
         }
 
         private String randomRequirements() {
             // Выбираем 5–10 случайных требований и собираем в один абзац
             int count = 5 + random.nextInt(6); // 5–10
-            StringBuilder sb = new StringBuilder();
+
+            StringBuilder sb = STRING_BUILDER.get();
+            sb.setLength(0); // очистить перед использованием
+
             for (int i = 0; i < count; i++) {
                 String req = randomFrom(VacancyConfig.REQUIREMENTS);
                 if (sb.indexOf(req) >= 0) {
@@ -83,21 +87,22 @@ public class VacancyGeneratorConfig {
                 }
                 sb.append(req);
             }
+
             return sb.toString();
         }
 
         private String buildUrl(String source, Long id) {
             // Очень грубая генерация URL для примера
             String base;
-            if (source.contains("hh")) {
+            if (source != null && source.contains("hh")) {
                 base = "https://hh.ru/vacancy/";
-            } else if (source.contains("superjob")) {
+            } else if (source != null && source.contains("superjob")) {
                 base = "https://www.superjob.ru/vacancy/";
-            } else if (source.contains("rabota")) {
+            } else if (source != null && source.contains("rabota")) {
                 base = "https://www.rabota.ru/vacancy/";
-            } else if (source.contains("habr")) {
+            } else if (source != null && source.contains("habr")) {
                 base = "https://career.habr.com/vacancies/";
-            } else if (source.contains("linkedin")) {
+            } else if (source != null && source.contains("linkedin")) {
                 base = "https://www.linkedin.com/jobs/view/";
             } else {
                 base = "https://example.com/vacancy/";

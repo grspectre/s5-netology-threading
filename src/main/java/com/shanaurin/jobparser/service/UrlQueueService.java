@@ -1,5 +1,6 @@
 package com.shanaurin.jobparser.service;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -12,6 +13,10 @@ public class UrlQueueService {
 
     private final BlockingQueue<String> urlQueue = new LinkedBlockingQueue<>();
 
+    public UrlQueueService(MeterRegistry registry) {
+        registry.gauge("jobparser.url.queue.size", urlQueue, BlockingQueue::size);
+    }
+
     public void addAll(List<String> urls) {
         if (urls == null || urls.isEmpty()) {
             return;
@@ -19,9 +24,6 @@ public class UrlQueueService {
         urlQueue.addAll(urls);
     }
 
-    /**
-     * Забирает до maxCount урлов из очереди (не блокируясь, если их меньше).
-     */
     public List<String> pollBatch(int maxCount) {
         List<String> result = new ArrayList<>(maxCount);
         urlQueue.drainTo(result, maxCount);
