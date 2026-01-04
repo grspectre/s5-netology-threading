@@ -3,6 +3,7 @@ package com.shanaurin.jobparser.service;
 import com.shanaurin.jobparser.logging.LoggingDaemon;
 import com.shanaurin.jobparser.metrics.ParserMetrics;
 import com.shanaurin.jobparser.model.Vacancy;
+import com.shanaurin.jobparser.model.dto.VacancyDto;
 import com.shanaurin.jobparser.repository.VacancyRepository;
 import com.shanaurin.jobparser.service.client.WebFluxMockHtmlClient;
 import io.micrometer.core.instrument.Timer;
@@ -13,10 +14,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 public class ParseService {
@@ -30,6 +33,7 @@ public class ParseService {
     private final LoggingDaemon loggingDaemon;
     private final ParserMetrics metrics;
     private final Tracer tracer;
+    private final ParsingTaskService parsingTaskService;
 
     private final Object batchLock = new Object();
     private final List<Vacancy> batch = new ArrayList<>();
@@ -40,7 +44,8 @@ public class ParseService {
                         VacancyRepository vacancyRepository,
                         LoggingDaemon loggingDaemon,
                         ParserMetrics metrics,
-                        Tracer tracer) {
+                        Tracer tracer,
+                        ParsingTaskService parsingTaskService) {
         this.vacancyExecutor = vacancyExecutor;
         this.mockHtmlClient = mockHtmlClient;
         this.vacancyParser = vacancyParser;
@@ -48,6 +53,59 @@ public class ParseService {
         this.loggingDaemon = loggingDaemon;
         this.metrics = metrics;
         this.tracer = tracer;
+        this.parsingTaskService = parsingTaskService;
+    }
+
+    /**
+     * Парсинг с отслеживанием статуса для REST polling и WebSocket
+     */
+    public String parseUrlsWithTracking(List<String> urls, int delaySeconds) {
+        if (urls == null || urls.isEmpty()) {
+            return null;
+        }
+
+        String taskId = parsingTaskService.createTask(urls.size());
+        AtomicInteger processedCount = new AtomicInteger(0);
+        List<VacancyDto> results = new ArrayList<>();
+
+        vacancyExecutor.submit(() -> {
+            try {
+                // Имитация задержки обработки
+                if (delaySeconds > 0) {
+                    Thread.sleep(delaySeconds * 1000L);
+                }
+
+                for (String url : urls) {
+                    try {
+                        String html = mockHtmlClient.fetchHtml(url);
+                        Vacancy vacancy = vacancyParser.parse(html, url);
+                        Vacancy saved = vacancyRepository.save(vacancy);
+
+                        VacancyDto dto = toDto(saved);
+                        synchronized (results) {
+                            results.add(dto);
+                        }
+
+                        int current = processedCount.incrementAndGet();
+                        parsingTaskService.updateProgress(taskId, current, dto);
+
+                    } catch (Exception e) {
+                        processedCount.incrementAndGet();
+                        loggingDaemon.log("Error processing url " + url + ": " + e.getMessage());
+                    }
+                }
+
+                parsingTaskService.completeTask(taskId, results);
+
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                parsingTaskService.failTask(taskId, "Task interrupted");
+            } catch (Exception e) {
+                parsingTaskService.failTask(taskId, e.getMessage());
+            }
+        });
+
+        return taskId;
     }
 
     public void parseUrls(List<String> urls) {
@@ -65,12 +123,10 @@ public class ParseService {
 
         try (Tracer.SpanInScope batchScope = tracer.withSpan(batchSpan)) {
 
-            // Захватываем текущий span для передачи в потоки executor'а
             Span parentSpan = tracer.currentSpan();
 
             for (String url : urls) {
                 vacancyExecutor.submit(() -> {
-                    // Создаём дочерний span с явной привязкой к parent
                     Span urlSpan = tracer.nextSpan(parentSpan)
                             .name("processUrl.async")
                             .tag("jobparser.url", url)
@@ -87,7 +143,6 @@ public class ParseService {
                 });
             }
 
-            // Ожидание завершения и flush в отдельной задаче
             vacancyExecutor.submit(() -> {
                 Span awaitSpan = tracer.nextSpan(parentSpan)
                         .name("parseUrls.awaitAndFlush")
@@ -129,7 +184,6 @@ public class ParseService {
 
         try (Tracer.SpanInScope scope = tracer.withSpan(span)) {
 
-            // --- Fetch HTML ---
             Timer.Sample fetchSample = metrics.startFetchTimer();
             String html;
 
@@ -148,7 +202,6 @@ public class ParseService {
                 metrics.stopFetchTimer(fetchSample);
             }
 
-            // --- Parse HTML ---
             Timer.Sample parseSample = metrics.startParseTimer();
             Vacancy vacancy;
 
@@ -167,7 +220,6 @@ public class ParseService {
                 metrics.stopParseTimer(parseSample);
             }
 
-            // --- Batch accumulation ---
             List<Vacancy> toSave = null;
             synchronized (batchLock) {
                 batch.add(vacancy);
@@ -254,5 +306,20 @@ public class ParseService {
             return "parse";
         }
         return "unknown";
+    }
+
+    private VacancyDto toDto(Vacancy v) {
+        VacancyDto dto = new VacancyDto();
+        dto.setId(v.getId());
+        dto.setSource(v.getSource());
+        dto.setUrl(v.getUrl());
+        dto.setTitle(v.getTitle());
+        dto.setCompany(v.getCompany());
+        dto.setCity(v.getCity());
+        dto.setSalary(v.getSalary());
+        dto.setRequirements(v.getRequirements());
+        dto.setPublishedAt(v.getPublishedAt());
+        dto.setCreatedAt(v.getCreatedAt());
+        return dto;
     }
 }

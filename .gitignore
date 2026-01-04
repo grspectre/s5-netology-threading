@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+collect.py
+project_sources_concat.txt

@@ -35,3 +35,22 @@
 
 [Отчёт в формате pdf](docs/Управление%20производительностью,%20ИДЗ.pdf)  
 [Ссылка на документ в Google Docs](https://docs.google.com/document/d/1mqI_AZVStXn8CSlXc6f9ekJVLcva0o8KN4lFMZDWSzI/edit?usp=sharing)
+
+# Vacancy Parser - REST vs WebSocket Comparison
+
+## Как проверить сравнение REST и WebSocket?
+
+1. Запустить проект: `./mvnw spring-boot:run`
+2. Перейти на http://localhost:8080/comparison
+3. Задать параметры тестирования
+4. Нажать "Запустить оба" для параллельного сравнения
+
+## Эндпоинты
+
+### REST + Polling
+- `POST /api/parse/start?delaySeconds=N` - запуск парсинга, возвращает taskId
+- `GET /api/parse/status/{taskId}` - получение статуса задачи
+
+### WebSocket
+- `ws://localhost:8080/ws/parsing` - WebSocket endpoint
+- `POST /api/parse/ws?delaySeconds=N` - запуск парсинга с уведомлением через WS

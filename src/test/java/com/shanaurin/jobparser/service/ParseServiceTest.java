@@ -4,6 +4,7 @@ import com.shanaurin.jobparser.logging.LoggingDaemon;
 import com.shanaurin.jobparser.metrics.ParserMetrics;
 import com.shanaurin.jobparser.model.Vacancy;
 import com.shanaurin.jobparser.repository.VacancyRepository;
+import com.shanaurin.jobparser.service.ParsingTaskService;
 import io.micrometer.tracing.Tracer;
 import com.shanaurin.jobparser.service.client.WebFluxMockHtmlClient;
 import org.junit.jupiter.api.AfterEach;
@@ -33,6 +34,7 @@ class ParseServiceTest {
         LoggingDaemon loggingDaemon = mock(LoggingDaemon.class);
         ParserMetrics parserMetrics = mock(ParserMetrics.class);
         Tracer tracer = mock(Tracer.class);
+        ParsingTaskService parsingTaskService = mock(ParsingTaskService.class);
 
         String html = "<html><body>test</body></html>";
         when(mockClient.fetchHtml(anyString())).thenReturn(html);
@@ -50,7 +52,8 @@ class ParseServiceTest {
                 repository,
                 loggingDaemon,
                 parserMetrics,
-                tracer
+                tracer,
+                parsingTaskService
         );
 
         List<String> urls = List.of("http://localhost/mock/1", "http://localhost/mock/2");
@@ -82,11 +85,12 @@ class ParseServiceTest {
         LoggingDaemon loggingDaemon = mock(LoggingDaemon.class);
         ParserMetrics parserMetrics = mock(ParserMetrics.class);
         Tracer tracer = mock(Tracer.class);
+        ParsingTaskService parsingTaskService = mock(ParsingTaskService.class);
 
         when(mockClient.fetchHtml(anyString())).thenThrow(new RuntimeException("boom"));
 
         ParseService parseService = new ParseService(
-                executor, mockClient, parser, repository, loggingDaemon, parserMetrics, tracer
+                executor, mockClient, parser, repository, loggingDaemon, parserMetrics, tracer, parsingTaskService
         );
 
         parseService.parseUrls(List.of("http://bad-url"));
