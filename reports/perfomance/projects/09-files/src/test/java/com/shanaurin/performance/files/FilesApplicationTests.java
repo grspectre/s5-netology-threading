@@ -1,4 +1,4 @@
-package com.shanaurin.perfomance.files;
+package com.shanaurin.performance.files;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

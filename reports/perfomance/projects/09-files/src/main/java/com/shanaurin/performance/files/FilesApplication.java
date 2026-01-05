@@ -1,4 +1,4 @@
-package com.shanaurin.perfomance.files;
+package com.shanaurin.performance.files;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
