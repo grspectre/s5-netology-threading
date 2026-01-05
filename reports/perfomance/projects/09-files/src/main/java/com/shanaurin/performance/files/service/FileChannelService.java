@@ -12,6 +12,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,8 +21,9 @@ import java.util.List;
 public class FileChannelService {
 
     private static final String FILE_PATH = "data_file_channel.dat";
-    private static final int RECORD_SIZE = 128;
+    private static final int RECORD_SIZE = 108;
     private static final int BUFFER_SIZE = 8192; // 8KB буфер
+    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
     public PerformanceMetrics writeData(List<CurrencyRate> data) {
         PerformanceMetrics metrics = new PerformanceMetrics("FileChannel - Запись", data.size());
@@ -96,7 +98,7 @@ public class FileChannelService {
                 buffer.compact();
             }
 
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("Ошибка при чтении данных через FileChannel", e);
         }
 
@@ -113,7 +115,8 @@ public class FileChannelService {
         putFixedString(buffer, rate.getCurrencyPair(), 20);
         buffer.putDouble(rate.getRate());
         buffer.putDouble(rate.getVolume());
-        putFixedString(buffer, rate.getTimestamp().toString(), 64);
+        String timestampStr = rate.getTimestamp().format(FORMATTER);
+        putFixedString(buffer, timestampStr, 64);
     }
 
     private CurrencyRate readRecordFromBuffer(ByteBuffer buffer) {
@@ -121,21 +124,35 @@ public class FileChannelService {
         String currencyPair = getFixedString(buffer, 20);
         double rate = buffer.getDouble();
         double volume = buffer.getDouble();
-        String timestamp = getFixedString(buffer, 64);
+        String timestampStr = getFixedString(buffer, 64);
 
-        return new CurrencyRate(id, currencyPair, rate, volume, LocalDateTime.parse(timestamp));
+        LocalDateTime timestamp;
+        try {
+            timestamp = LocalDateTime.parse(timestampStr, FORMATTER);
+        } catch (Exception e) {
+            log.warn("Ошибка парсинга даты '{}', используем текущее время", timestampStr);
+            timestamp = LocalDateTime.now();
+        }
+
+        return new CurrencyRate(id, currencyPair, rate, volume, timestamp);
     }
 
     private void putFixedString(ByteBuffer buffer, String str, int length) {
         byte[] bytes = new byte[length];
         byte[] strBytes = str.getBytes(StandardCharsets.UTF_8);
-        System.arraycopy(strBytes, 0, bytes, 0, Math.min(strBytes.length, length));
+        int copyLength = Math.min(strBytes.length, length);
+        System.arraycopy(strBytes, 0, bytes, 0, copyLength);
+        // Заполняем остаток пробелами
+        for (int i = copyLength; i < length; i++) {
+            bytes[i] = ' ';
+        }
         buffer.put(bytes);
     }
 
     private String getFixedString(ByteBuffer buffer, int length) {
         byte[] bytes = new byte[length];
         buffer.get(bytes);
-        return new String(bytes, StandardCharsets.UTF_8).trim().replace("\0", "");
+        String result = new String(bytes, StandardCharsets.UTF_8).trim();
+        return result.replace("\0", "").trim();
     }
 }
