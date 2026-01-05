@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -70,7 +69,6 @@ public class ParseService {
 
         vacancyExecutor.submit(() -> {
             try {
-                // Имитация задержки обработки
                 if (delaySeconds > 0) {
                     Thread.sleep(delaySeconds * 1000L);
                 }
@@ -113,110 +111,152 @@ public class ParseService {
             return;
         }
 
-        Span batchSpan = tracer.nextSpan()
-                .name("parseUrls.batch")
-                .tag("jobparser.urls.count", String.valueOf(urls.size()))
-                .start();
+        Span batchSpan = tracer.nextSpan();
+        if (batchSpan != null) {
+            batchSpan
+                    .name("parseUrls.batch")
+                    .tag("jobparser.urls.count", String.valueOf(urls.size()))
+                    .start();
+        }
 
         Timer.Sample batchSample = metrics.startBatchTimer();
         CountDownLatch latch = new CountDownLatch(urls.size());
 
-        try (Tracer.SpanInScope batchScope = tracer.withSpan(batchSpan)) {
+        try (Tracer.SpanInScope batchScope = (batchSpan != null ? tracer.withSpan(batchSpan) : null)) {
 
             Span parentSpan = tracer.currentSpan();
 
             for (String url : urls) {
                 vacancyExecutor.submit(() -> {
-                    Span urlSpan = tracer.nextSpan(parentSpan)
-                            .name("processUrl.async")
-                            .tag("jobparser.url", url)
-                            .start();
+                    Span urlSpan = tracer.nextSpan(parentSpan);
+                    if (urlSpan != null) {
+                        urlSpan
+                                .name("processUrl.async")
+                                .tag("jobparser.url", url)
+                                .start();
+                    }
 
-                    try (Tracer.SpanInScope urlScope = tracer.withSpan(urlSpan)) {
+                    try (Tracer.SpanInScope urlScope = (urlSpan != null ? tracer.withSpan(urlSpan) : null)) {
                         processUrl(url);
                     } catch (Exception e) {
-                        urlSpan.error(e);
+                        if (urlSpan != null) {
+                            urlSpan.error(e);
+                        }
                     } finally {
-                        urlSpan.end();
+                        if (urlSpan != null) {
+                            urlSpan.end();
+                        }
                         latch.countDown();
                     }
                 });
             }
 
             vacancyExecutor.submit(() -> {
-                Span awaitSpan = tracer.nextSpan(parentSpan)
-                        .name("parseUrls.awaitAndFlush")
-                        .start();
+                Span awaitSpan = tracer.nextSpan(parentSpan);
+                if (awaitSpan != null) {
+                    awaitSpan
+                            .name("parseUrls.awaitAndFlush")
+                            .start();
+                }
 
-                try (Tracer.SpanInScope awaitScope = tracer.withSpan(awaitSpan)) {
+                try (Tracer.SpanInScope awaitScope = (awaitSpan != null ? tracer.withSpan(awaitSpan) : null)) {
                     latch.await();
                     flushBatch();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     metrics.incError("unknown");
-                    awaitSpan.error(e);
+                    if (awaitSpan != null) {
+                        awaitSpan.error(e);
+                    }
                 } catch (Exception e) {
-                    awaitSpan.error(e);
+                    if (awaitSpan != null) {
+                        awaitSpan.error(e);
+                    }
                     throw e;
                 } finally {
-                    awaitSpan.end();
+                    if (awaitSpan != null) {
+                        awaitSpan.end();
+                    }
                     metrics.stopBatchTimer(batchSample);
-                    batchSpan.end();
+                    if (batchSpan != null) {
+                        batchSpan.end();
+                    }
                 }
             });
 
         } catch (Exception e) {
-            batchSpan.error(e);
+            if (batchSpan != null) {
+                batchSpan.error(e);
+            }
             metrics.stopBatchTimer(batchSample);
-            batchSpan.end();
+            if (batchSpan != null) {
+                batchSpan.end();
+            }
             throw e;
         }
     }
 
     private void processUrl(String url) {
-        Span span = tracer.nextSpan()
-                .name("processUrl")
-                .tag("jobparser.url", url)
-                .start();
+        Span span = tracer.nextSpan();
+        if (span != null) {
+            span
+                    .name("processUrl")
+                    .tag("jobparser.url", url)
+                    .start();
+        }
 
         metrics.incProcessed();
         Timer.Sample urlSample = metrics.startUrlTimer();
 
-        try (Tracer.SpanInScope scope = tracer.withSpan(span)) {
+        try (Tracer.SpanInScope scope = (span != null ? tracer.withSpan(span) : null)) {
 
             Timer.Sample fetchSample = metrics.startFetchTimer();
             String html;
 
-            Span fetchSpan = tracer.nextSpan()
-                    .name("fetchHtml")
-                    .tag("jobparser.url", url)
-                    .start();
+            Span fetchSpan = tracer.nextSpan();
+            if (fetchSpan != null) {
+                fetchSpan
+                        .name("fetchHtml")
+                        .tag("jobparser.url", url)
+                        .start();
+            }
 
-            try (Tracer.SpanInScope fetchScope = tracer.withSpan(fetchSpan)) {
+            try (Tracer.SpanInScope fetchScope = (fetchSpan != null ? tracer.withSpan(fetchSpan) : null)) {
                 html = mockHtmlClient.fetchHtml(url);
             } catch (Exception e) {
-                fetchSpan.error(e);
+                if (fetchSpan != null) {
+                    fetchSpan.error(e);
+                }
                 throw e;
             } finally {
-                fetchSpan.end();
+                if (fetchSpan != null) {
+                    fetchSpan.end();
+                }
                 metrics.stopFetchTimer(fetchSample);
             }
 
             Timer.Sample parseSample = metrics.startParseTimer();
             Vacancy vacancy;
 
-            Span parseSpan = tracer.nextSpan()
-                    .name("parseHtml")
-                    .tag("jobparser.url", url)
-                    .start();
+            Span parseSpan = tracer.nextSpan();
+            if (parseSpan != null) {
+                parseSpan
+                        .name("parseHtml")
+                        .tag("jobparser.url", url)
+                        .start();
+            }
 
-            try (Tracer.SpanInScope parseScope = tracer.withSpan(parseSpan)) {
+            try (Tracer.SpanInScope parseScope = (parseSpan != null ? tracer.withSpan(parseSpan) : null)) {
                 vacancy = vacancyParser.parse(html, url);
             } catch (Exception e) {
-                parseSpan.error(e);
+                if (parseSpan != null) {
+                    parseSpan.error(e);
+                }
                 throw e;
             } finally {
-                parseSpan.end();
+                if (parseSpan != null) {
+                    parseSpan.end();
+                }
                 metrics.stopParseTimer(parseSample);
             }
 
@@ -237,58 +277,78 @@ public class ParseService {
             metrics.incError(classifyError(e));
             loggingDaemon.log("Error processing url " + url + ": " +
                     e.getClass().getSimpleName() + " - " + e.getMessage());
-            span.error(e);
+            if (span != null) {
+                span.error(e);
+            }
         } finally {
             metrics.stopUrlTimer(urlSample);
-            span.end();
+            if (span != null) {
+                span.end();
+            }
         }
     }
 
     private void flushBatch() {
-        Span span = tracer.nextSpan()
-                .name("flushBatch")
-                .start();
+        Span span = tracer.nextSpan();
+        if (span != null) {
+            span.name("flushBatch").start();
+        }
 
-        try (Tracer.SpanInScope scope = tracer.withSpan(span)) {
+        try (Tracer.SpanInScope scope = (span != null ? tracer.withSpan(span) : null)) {
             List<Vacancy> toSave;
 
             synchronized (batchLock) {
                 if (batch.isEmpty()) {
-                    span.tag("jobparser.batch.size", "0");
+                    if (span != null) {
+                        span.tag("jobparser.batch.size", "0");
+                    }
                     return;
                 }
                 toSave = new ArrayList<>(batch);
                 batch.clear();
             }
 
-            span.tag("jobparser.batch.size", String.valueOf(toSave.size()));
+            if (span != null) {
+                span.tag("jobparser.batch.size", String.valueOf(toSave.size()));
+            }
             saveBatch(toSave, "flush");
 
         } catch (Exception e) {
-            span.error(e);
+            if (span != null) {
+                span.error(e);
+            }
             throw e;
         } finally {
-            span.end();
+            if (span != null) {
+                span.end();
+            }
         }
     }
 
     private void saveBatch(List<Vacancy> toSave, String context) {
-        Span dbSpan = tracer.nextSpan()
-                .name("saveBatch")
-                .tag("jobparser.batch.size", String.valueOf(toSave.size()))
-                .tag("jobparser.save.context", context)
-                .start();
+        Span dbSpan = tracer.nextSpan();
+        if (dbSpan != null) {
+            dbSpan
+                    .name("saveBatch")
+                    .tag("jobparser.batch.size", String.valueOf(toSave.size()))
+                    .tag("jobparser.save.context", context)
+                    .start();
+        }
 
         Timer.Sample dbSample = metrics.startDbTimer();
 
-        try (Tracer.SpanInScope scope = tracer.withSpan(dbSpan)) {
+        try (Tracer.SpanInScope scope = (dbSpan != null ? tracer.withSpan(dbSpan) : null)) {
             vacancyRepository.saveAll(toSave);
         } catch (Exception e) {
-            dbSpan.error(e);
+            if (dbSpan != null) {
+                dbSpan.error(e);
+            }
             throw e;
         } finally {
             metrics.stopDbTimer(dbSample);
-            dbSpan.end();
+            if (dbSpan != null) {
+                dbSpan.end();
+            }
         }
 
         metrics.incSaved(toSave.size());

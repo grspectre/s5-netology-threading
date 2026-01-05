@@ -4,7 +4,7 @@ import com.shanaurin.jobparser.logging.LoggingDaemon;
 import com.shanaurin.jobparser.metrics.ParserMetrics;
 import com.shanaurin.jobparser.model.Vacancy;
 import com.shanaurin.jobparser.repository.VacancyRepository;
-import com.shanaurin.jobparser.service.ParsingTaskService;
+import io.micrometer.core.instrument.Timer;
 import io.micrometer.tracing.Tracer;
 import com.shanaurin.jobparser.service.client.WebFluxMockHtmlClient;
 import org.junit.jupiter.api.AfterEach;
@@ -27,17 +27,32 @@ class ParseServiceTest {
     }
 
     @Test
-    void parseUrls_shouldSubmitTasksToExecutorAndSaveVacancies() throws Exception {
+    void parseUrls_shouldSubmitTasksAndFlushBatchAndSaveAllVacancies() throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(4);
+
         WebFluxMockHtmlClient mockClient = mock(WebFluxMockHtmlClient.class);
         VacancyParser parser = mock(VacancyParser.class);
         VacancyRepository repository = mock(VacancyRepository.class);
         LoggingDaemon loggingDaemon = mock(LoggingDaemon.class);
-        ParserMetrics parserMetrics = mock(ParserMetrics.class);
+        ParserMetrics metrics = mock(ParserMetrics.class);
         Tracer tracer = mock(Tracer.class);
         ParsingTaskService parsingTaskService = mock(ParsingTaskService.class);
 
+        // metrics timers are used; return "safe" mocks so NPE не случится
+        when(metrics.startBatchTimer()).thenReturn(mock(Timer.Sample.class));
+        when(metrics.startUrlTimer()).thenReturn(mock(Timer.Sample.class));
+        when(metrics.startFetchTimer()).thenReturn(mock(Timer.Sample.class));
+        when(metrics.startParseTimer()).thenReturn(mock(Timer.Sample.class));
+        when(metrics.startDbTimer()).thenReturn(mock(Timer.Sample.class));
+
+        // tracer может быть null-совместимым: сервис везде проверяет span на null
+        when(tracer.nextSpan()).thenReturn(null);
+        when(tracer.currentSpan()).thenReturn(null);
+        when(tracer.nextSpan(any())).thenReturn(null);
+
         String html = "<html><body>test</body></html>";
         when(mockClient.fetchHtml(anyString())).thenReturn(html);
+
         when(parser.parse(eq(html), anyString())).thenAnswer(inv -> {
             String url = inv.getArgument(1, String.class);
             Vacancy v = new Vacancy();
@@ -45,28 +60,31 @@ class ParseServiceTest {
             return v;
         });
 
-        ParseService parseService = new ParseService(
+        ParseService service = new ParseService(
                 executor,
                 mockClient,
                 parser,
                 repository,
                 loggingDaemon,
-                parserMetrics,
+                metrics,
                 tracer,
                 parsingTaskService
         );
 
         List<String> urls = List.of("http://localhost/mock/1", "http://localhost/mock/2");
 
-        parseService.parseUrls(urls);
+        service.parseUrls(urls);
 
         executor.shutdown();
-        executor.awaitTermination(5, TimeUnit.SECONDS);
+        assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
 
-        ArgumentCaptor<Vacancy> captor = ArgumentCaptor.forClass(Vacancy.class);
-        verify(repository, times(2)).save(captor.capture());
+        // Теперь сохраняется батчем через saveAll(List<Vacancy>) один раз при flushBatch()
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Vacancy>> batchCaptor = ArgumentCaptor.forClass((Class) List.class);
 
-        List<Vacancy> saved = captor.getAllValues();
+        verify(repository, times(1)).saveAll(batchCaptor.capture());
+        List<Vacancy> saved = batchCaptor.getValue();
+
         assertThat(saved)
                 .extracting(Vacancy::getUrl)
                 .containsExactlyInAnyOrder(
@@ -74,7 +92,7 @@ class ParseServiceTest {
                         "http://localhost/mock/2"
                 );
 
-        verify(loggingDaemon, atLeastOnce()).log(contains("Saved vacancy from:"));
+        verify(loggingDaemon, atLeastOnce()).log(contains("Saved batch of 2 vacancies"));
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.shanaurin.jobparser.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shanaurin.jobparser.model.dto.ParseRequest;
 import com.shanaurin.jobparser.service.ParseService;
+import com.shanaurin.jobparser.service.ParsingTaskService;
 import com.shanaurin.jobparser.service.UrlQueueService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,7 +30,8 @@ class ParseControllerTest {
     void setUp() {
         urlQueueService = mock(UrlQueueService.class);
         parseService = mock(ParseService.class);
-        ParseController controller = new ParseController(urlQueueService, parseService);
+        ParsingTaskService parsingTaskService = mock(ParsingTaskService.class);
+        ParseController controller = new ParseController(urlQueueService, parseService, parsingTaskService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
         objectMapper = new ObjectMapper();
     }
